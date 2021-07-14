@@ -69,6 +69,10 @@ suite('Smoke Test: Datascience', () => {
         // Unfortunately there's no way to know for sure it has completely loaded.
         await sleep(15_000);
 
+        const configuration = vscode.workspace.getConfiguration();
+        console.log('Jupyter settings', configuration.inspect('jupyter'));
+        console.log('Notebook settings', configuration.inspect('notebook'));
+        console.log('Workbench settings', configuration.inspect('workbench'));
         await vscode.commands.executeCommand<void>('jupyter.notebookeditor.runallcells');
         const checkIfFileHasBeenCreated = () => fs.pathExists(outputFile);
         await waitForCondition(checkIfFileHasBeenCreated, timeoutForCellToRun, `"${outputFile}" file not created`);
@@ -96,6 +100,10 @@ suite('Smoke Test: Datascience', () => {
         console.log('Step0');
         await sleep(1_000);
         console.log('Step1');
+        const configuration = vscode.workspace.getConfiguration();
+        console.log('Jupyter settings', configuration.inspect('jupyter'));
+        console.log('Notebook settings', configuration.inspect('notebook'));
+        console.log('Workbench settings', configuration.inspect('workbench'));
         await vscode.commands.executeCommand<void>('jupyter.runallcells', textDocument.uri);
         console.log('Step2');
         const checkIfFileHasBeenCreated = () => fs.pathExists(outputFile);
