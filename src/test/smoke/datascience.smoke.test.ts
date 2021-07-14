@@ -3,11 +3,11 @@
 
 'use strict';
 
-import * as assert from 'assert';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { JUPYTER_EXTENSION_ID } from '../../client/common/constants';
+import { traceInfo } from '../../client/common/logger';
 import { openFile, setAutoSaveDelayInWorkspaceRoot, waitForCondition } from '../common';
 import { EXTENSION_ROOT_DIR_FOR_TESTS, IS_SMOKE_TEST } from '../constants';
 import { sleep } from '../core';
@@ -24,37 +24,18 @@ suite('Smoke Test: Datascience', () => {
         await verifyExtensionIsAvailable(JUPYTER_EXTENSION_ID);
         await initialize();
         await setAutoSaveDelayInWorkspaceRoot(1);
-
-        return undefined;
     });
-    setup(initializeTest);
+    setup(async function () {
+        traceInfo(`Start Test ${this.currentTest?.title}`);
+        await initializeTest();
+        traceInfo(`Start Test Completed ${this.currentTest?.title}`);
+    });
     suiteTeardown(closeActiveWindows);
-    teardown(closeActiveWindows);
-
-    test('Run Cell in interactive window', async () => {
-        const file = path.join(
-            EXTENSION_ROOT_DIR_FOR_TESTS,
-            'src',
-            'test',
-            'pythonFiles',
-            'datascience',
-            'simple_note_book.py',
-        );
-        const outputFile = path.join(path.dirname(file), 'ds.log');
-        if (await fs.pathExists(outputFile)) {
-            await fs.unlink(outputFile);
-        }
-        const textDocument = await openFile(file);
-
-        // Wait for code lenses to get detected.
-        await sleep(1_000);
-
-        await vscode.commands.executeCommand<void>('jupyter.runallcells', textDocument.uri).then(undefined, (err) => {
-            assert.fail(`Something went wrong running all cells in the interactive window: ${err}`);
-        });
-        const checkIfFileHasBeenCreated = () => fs.pathExists(outputFile);
-        await waitForCondition(checkIfFileHasBeenCreated, timeoutForCellToRun, `"${outputFile}" file not created`);
-    }).timeout(timeoutForCellToRun);
+    teardown(async function () {
+        traceInfo(`End Test ${this.currentTest?.title}`);
+        await closeActiveWindows();
+        traceInfo(`End Test Compelete ${this.currentTest?.title}`);
+    });
 
     test('Run Cell in native editor', async () => {
         const file = path.join(
@@ -80,13 +61,38 @@ suite('Smoke Test: Datascience', () => {
         // Unfortunately there's no way to know for sure it has completely loaded.
         await sleep(15_000);
 
-        await vscode.commands.executeCommand<void>('jupyter.notebookeditor.runallcells').then(undefined, (err) => {
-            assert.fail(`Something went wrong running all cells in the native editor: ${err}`);
-        });
+        await vscode.commands.executeCommand<void>('jupyter.notebookeditor.runallcells');
         const checkIfFileHasBeenCreated = () => fs.pathExists(outputFile);
         await waitForCondition(checkIfFileHasBeenCreated, timeoutForCellToRun, `"${outputFile}" file not created`);
 
         // Give time for the file to be saved before we shutdown
         await sleep(300);
+    }).timeout(timeoutForCellToRun);
+
+    test('Run Cell in interactive window', async () => {
+        const file = path.join(
+            EXTENSION_ROOT_DIR_FOR_TESTS,
+            'src',
+            'test',
+            'pythonFiles',
+            'datascience',
+            'simple_note_book.py',
+        );
+        const outputFile = path.join(path.dirname(file), 'ds.log');
+        if (await fs.pathExists(outputFile)) {
+            await fs.unlink(outputFile);
+        }
+        const textDocument = await openFile(file);
+
+        // Wait for code lenses to get detected.
+        console.log('Step0');
+        await sleep(1_000);
+        console.log('Step1');
+        await vscode.commands.executeCommand<void>('jupyter.runallcells', textDocument.uri);
+        console.log('Step2');
+        const checkIfFileHasBeenCreated = () => fs.pathExists(outputFile);
+        console.log('Step3');
+        await waitForCondition(checkIfFileHasBeenCreated, timeoutForCellToRun, `"${outputFile}" file not created`);
+        console.log('Step4');
     }).timeout(timeoutForCellToRun);
 });
