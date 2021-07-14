@@ -21,9 +21,13 @@ suite('Smoke Test: Datascience', () => {
         if (!IS_SMOKE_TEST) {
             return this.skip();
         }
+        const configuration = vscode.workspace.getConfiguration();
+        await configuration.update('jupyter.experiments.optOutFrom', ["NativeNotebookEditor"]);
+        await configuration.update('security.workspace.trust.enabled', false);
         await verifyExtensionIsAvailable(JUPYTER_EXTENSION_ID);
         await initialize();
         await setAutoSaveDelayInWorkspaceRoot(1);
+        return undefined;
     });
     setup(async function () {
         traceInfo(`Start Test ${this.currentTest?.title}`);
