@@ -4,6 +4,7 @@
 import * as path from 'path';
 import * as sinon from 'sinon';
 import { Uri } from 'vscode';
+import * as winreg from '../../../../../client/pythonEnvironments/common/windowsRegistry';
 import * as externalDependencies from '../../../../../client/pythonEnvironments/common/externalDependencies';
 import * as platformApis from '../../../../../client/common/utils/platform';
 import {
@@ -16,21 +17,31 @@ import {
 import { buildEnvInfo } from '../../../../../client/pythonEnvironments/base/info/env';
 import { InterpreterInformation } from '../../../../../client/pythonEnvironments/base/info/interpreter';
 import { parseVersion } from '../../../../../client/pythonEnvironments/base/info/pythonVersion';
-import { resolveEnv } from '../../../../../client/pythonEnvironments/base/locators/composite/resolverUtils';
 import { TEST_LAYOUT_ROOT } from '../../../common/commonTestConstants';
-import { assertEnvEqual } from '../../../discovery/locators/envTestUtils';
+import { assertEnvEqual } from '../envTestUtils';
 import { Architecture } from '../../../../../client/common/utils/platform';
 import {
     AnacondaCompanyName,
     CondaInfo,
-} from '../../../../../client/pythonEnvironments/discovery/locators/services/conda';
+} from '../../../../../client/pythonEnvironments/common/environmentManagers/conda';
+import { resolveBasicEnv } from '../../../../../client/pythonEnvironments/base/locators/composite/resolverUtils';
 
 suite('Resolver Utils', () => {
+    let getWorkspaceFolders: sinon.SinonStub;
+    setup(() => {
+        sinon.stub(externalDependencies, 'getPythonSetting').withArgs('condaPath').returns('conda');
+        getWorkspaceFolders = sinon.stub(externalDependencies, 'getWorkspaceFolders');
+        getWorkspaceFolders.returns([]);
+    });
+
+    teardown(() => {
+        sinon.restore();
+    });
+
     suite('Pyenv', () => {
         const testPyenvRoot = path.join(TEST_LAYOUT_ROOT, 'pyenvhome', '.pyenv');
         const testPyenvVersionsDir = path.join(testPyenvRoot, 'versions');
         setup(() => {
-            sinon.stub(externalDependencies, 'getWorkspaceFolders').returns([]);
             sinon.stub(platformApis, 'getEnvironmentVariable').withArgs('PYENV_ROOT').returns(testPyenvRoot);
         });
 
@@ -46,19 +57,18 @@ suite('Resolver Utils', () => {
                     minor: 9,
                     micro: 0,
                 },
-                source: [PythonEnvSource.Pyenv],
+                source: [],
             });
-            envInfo.display = '3.9.0:pyenv';
             envInfo.location = path.join(testPyenvVersionsDir, '3.9.0');
             envInfo.name = '3.9.0';
             return envInfo;
         }
 
         test('resolveEnv', async () => {
-            const pythonPath = path.join(testPyenvVersionsDir, '3.9.0', 'bin', 'python');
+            const executablePath = path.join(testPyenvVersionsDir, '3.9.0', 'bin', 'python');
             const expected = getExpectedPyenvInfo();
 
-            const actual = await resolveEnv(pythonPath);
+            const actual = await resolveBasicEnv({ executablePath, kind: PythonEnvKind.Pyenv });
             assertEnvEqual(actual, expected);
         });
     });
@@ -68,7 +78,6 @@ suite('Resolver Utils', () => {
         const testStoreAppRoot = path.join(testLocalAppData, 'Microsoft', 'WindowsApps');
 
         setup(() => {
-            sinon.stub(externalDependencies, 'getWorkspaceFolders').returns([]);
             sinon.stub(platformApis, 'getEnvironmentVariable').withArgs('LOCALAPPDATA').returns(testLocalAppData);
         });
 
@@ -116,7 +125,10 @@ suite('Resolver Utils', () => {
                 ...createExpectedInterpreterInfo(python38path),
             };
 
-            const actual = await resolveEnv(python38path);
+            const actual = await resolveBasicEnv({
+                executablePath: python38path,
+                kind: PythonEnvKind.WindowsStore,
+            });
 
             assertEnvEqual(actual, expected);
         });
@@ -134,7 +146,10 @@ suite('Resolver Utils', () => {
                 ...createExpectedInterpreterInfo(python38path),
             };
 
-            const actual = await resolveEnv(python38path);
+            const actual = await resolveBasicEnv({
+                executablePath: python38path,
+                kind: PythonEnvKind.WindowsStore,
+            });
 
             assertEnvEqual(actual, expected);
         });
@@ -160,7 +175,7 @@ suite('Resolver Utils', () => {
                 kind: PythonEnvKind.Conda,
                 org: AnacondaCompanyName,
                 location,
-                source: [PythonEnvSource.Conda],
+                source: [],
                 version: UNKNOWN_PYTHON_VERSION,
                 fileInfo: undefined,
                 name: 'base',
@@ -189,13 +204,9 @@ suite('Resolver Utils', () => {
                 arch: Architecture.Unknown,
                 distro: { org: '' },
                 searchLocation: undefined,
-                source: [PythonEnvSource.Other],
+                source: [],
             };
         }
-
-        setup(() => {
-            sinon.stub(externalDependencies, 'getWorkspaceFolders').returns([]);
-        });
 
         teardown(() => {
             sinon.restore();
@@ -209,7 +220,10 @@ suite('Resolver Utils', () => {
                 }
                 throw new Error(`${command} is missing or is not executable`);
             });
-            const actual = await resolveEnv(path.join(TEST_LAYOUT_ROOT, 'conda1', 'python.exe'));
+            const actual = await resolveBasicEnv({
+                executablePath: path.join(TEST_LAYOUT_ROOT, 'conda1', 'python.exe'),
+                kind: PythonEnvKind.Conda,
+            });
             assertEnvEqual(actual, expectedEnvInfo(path.join(condaPrefixWindows, 'python.exe'), condaPrefixWindows));
         });
 
@@ -221,7 +235,10 @@ suite('Resolver Utils', () => {
                 }
                 throw new Error(`${command} is missing or is not executable`);
             });
-            const actual = await resolveEnv(path.join(TEST_LAYOUT_ROOT, 'conda2', 'bin', 'python'));
+            const actual = await resolveBasicEnv({
+                executablePath: path.join(TEST_LAYOUT_ROOT, 'conda2', 'bin', 'python'),
+                kind: PythonEnvKind.Conda,
+            });
             assertEnvEqual(
                 actual,
                 expectedEnvInfo(path.join(condaPrefixNonWindows, 'bin', 'python'), condaPrefixNonWindows),
@@ -233,7 +250,10 @@ suite('Resolver Utils', () => {
             sinon.stub(externalDependencies, 'exec').callsFake(async (command: string) => {
                 throw new Error(`${command} is missing or is not executable`);
             });
-            const actual = await resolveEnv(path.join(TEST_LAYOUT_ROOT, 'conda1', 'python.exe'));
+            const actual = await resolveBasicEnv({
+                executablePath: path.join(TEST_LAYOUT_ROOT, 'conda1', 'python.exe'),
+                kind: PythonEnvKind.Conda,
+            });
             assertEnvEqual(
                 actual,
                 createSimpleEnvInfo(
@@ -250,7 +270,7 @@ suite('Resolver Utils', () => {
     suite('Simple envs', () => {
         const testVirtualHomeDir = path.join(TEST_LAYOUT_ROOT, 'virtualhome');
         setup(() => {
-            sinon.stub(externalDependencies, 'getWorkspaceFolders').returns([testVirtualHomeDir]);
+            getWorkspaceFolders.returns([testVirtualHomeDir]);
         });
 
         teardown(() => {
@@ -279,7 +299,7 @@ suite('Resolver Utils', () => {
                 arch: Architecture.Unknown,
                 distro: { org: '' },
                 searchLocation: Uri.file(path.dirname(location)),
-                source: [PythonEnvSource.Other],
+                source: [],
             };
         }
 
@@ -291,7 +311,281 @@ suite('Resolver Utils', () => {
                 'win1',
                 path.join(testVirtualHomeDir, '.venvs', 'win1'),
             );
-            const actual = await resolveEnv(path.join(testVirtualHomeDir, '.venvs', 'win1', 'python.exe'));
+            const actual = await resolveBasicEnv({
+                executablePath: path.join(testVirtualHomeDir, '.venvs', 'win1', 'python.exe'),
+                kind: PythonEnvKind.Venv,
+            });
+            assertEnvEqual(actual, expected);
+        });
+    });
+
+    suite('Globally-installed envs', () => {
+        const testPosixKnownPathsRoot = path.join(TEST_LAYOUT_ROOT, 'posixroot');
+        const testLocation3 = path.join(testPosixKnownPathsRoot, 'location3');
+        setup(() => {
+            sinon.stub(platformApis, 'getOSType').callsFake(() => platformApis.OSType.Linux);
+        });
+
+        teardown(() => {
+            sinon.restore();
+        });
+
+        function createExpectedEnvInfo(
+            interpreterPath: string,
+            kind: PythonEnvKind,
+            version: PythonVersion = UNKNOWN_PYTHON_VERSION,
+            name = '',
+            location = '',
+        ): PythonEnvInfo {
+            return {
+                name,
+                location,
+                kind,
+                executable: {
+                    filename: interpreterPath,
+                    sysPrefix: '',
+                    ctime: -1,
+                    mtime: -1,
+                },
+                display: undefined,
+                version,
+                arch: Architecture.Unknown,
+                distro: { org: '' },
+                searchLocation: undefined,
+                source: [],
+            };
+        }
+
+        test('resolveEnv', async () => {
+            const executable = path.join(testLocation3, 'python3.8');
+            const expected = createExpectedEnvInfo(executable, PythonEnvKind.OtherGlobal, parseVersion('3.8'));
+            const actual = await resolveBasicEnv({
+                executablePath: executable,
+                kind: PythonEnvKind.OtherGlobal,
+            });
+            assertEnvEqual(actual, expected);
+        });
+    });
+
+    suite('Windows registry', () => {
+        const regTestRoot = path.join(TEST_LAYOUT_ROOT, 'winreg');
+
+        const registryData = {
+            x64: {
+                HKLM: [
+                    {
+                        key: '\\SOFTWARE\\Python',
+                        values: { '': '' },
+                        subKeys: ['\\SOFTWARE\\Python\\PythonCore', '\\SOFTWARE\\Python\\ContinuumAnalytics'],
+                    },
+                    {
+                        key: '\\SOFTWARE\\Python\\PythonCore',
+                        values: {
+                            '': '',
+                            DisplayName: 'Python Software Foundation',
+                            SupportUrl: 'www.python.org',
+                        },
+                        subKeys: ['\\SOFTWARE\\Python\\PythonCore\\3.9'],
+                    },
+                    {
+                        key: '\\SOFTWARE\\Python\\PythonCore\\3.9',
+                        values: {
+                            '': '',
+                            DisplayName: 'Python 3.9 (64-bit)',
+                            SupportUrl: 'www.python.org',
+                            SysArchitecture: '64bit',
+                            SysVersion: '3.9',
+                            Version: '3.9.0rc2',
+                        },
+                        subKeys: ['\\SOFTWARE\\Python\\PythonCore\\3.9\\InstallPath'],
+                    },
+                    {
+                        key: '\\SOFTWARE\\Python\\PythonCore\\3.9\\InstallPath',
+                        values: {
+                            '': '',
+                            ExecutablePath: path.join(regTestRoot, 'py39', 'python.exe'),
+                        },
+                        subKeys: [] as string[],
+                    },
+                    {
+                        key: '\\SOFTWARE\\Python\\ContinuumAnalytics',
+                        values: {
+                            '': '',
+                        },
+                        subKeys: ['\\SOFTWARE\\Python\\ContinuumAnalytics\\Anaconda38-64'],
+                    },
+                    {
+                        key: '\\SOFTWARE\\Python\\ContinuumAnalytics\\Anaconda38-64',
+                        values: {
+                            '': '',
+                            DisplayName: 'Anaconda py38_4.8.3',
+                            SupportUrl: 'github.com/continuumio/anaconda-issues',
+                            SysArchitecture: '64bit',
+                            SysVersion: '3.8',
+                            Version: 'py38_4.8.3',
+                        },
+                        subKeys: ['\\SOFTWARE\\Python\\PythonCore\\Anaconda38-64\\InstallPath'],
+                    },
+                    {
+                        key: '\\SOFTWARE\\Python\\PythonCore\\Anaconda38-64\\InstallPath',
+                        values: {
+                            '': '',
+                            ExecutablePath: path.join(regTestRoot, 'conda3', 'python.exe'),
+                        },
+                        subKeys: [] as string[],
+                    },
+                ],
+                HKCU: [],
+            },
+            x86: {
+                HKLM: [],
+                HKCU: [
+                    {
+                        key: '\\SOFTWARE\\Python',
+                        values: { '': '' },
+                        subKeys: ['\\SOFTWARE\\Python\\PythonCodingPack'],
+                    },
+                    {
+                        key: '\\SOFTWARE\\Python\\PythonCodingPack',
+                        values: {
+                            '': '',
+                            DisplayName: 'Python Software Foundation',
+                            SupportUrl: 'www.python.org',
+                        },
+                        subKeys: ['\\SOFTWARE\\Python\\PythonCodingPack\\3.8'],
+                    },
+                    {
+                        key: '\\SOFTWARE\\Python\\PythonCodingPack\\3.8',
+                        values: {
+                            '': '',
+                            DisplayName: 'Python 3.8 (32-bit)',
+                            SupportUrl: 'www.python.org',
+                            SysArchitecture: '32bit',
+                            SysVersion: '3.8.5',
+                        },
+                        subKeys: ['\\SOFTWARE\\Python\\PythonCodingPack\\3.8\\InstallPath'],
+                    },
+                    {
+                        key: '\\SOFTWARE\\Python\\PythonCodingPack\\3.8\\InstallPath',
+                        values: {
+                            '': '',
+                            ExecutablePath: path.join(regTestRoot, 'python38', 'python.exe'),
+                        },
+                        subKeys: [] as string[],
+                    },
+                ],
+            },
+        };
+
+        function fakeRegistryValues({ arch, hive, key }: winreg.Options): Promise<winreg.IRegistryValue[]> {
+            const regArch = arch === 'x86' ? registryData.x86 : registryData.x64;
+            const regHive = hive === winreg.HKCU ? regArch.HKCU : regArch.HKLM;
+            for (const k of regHive) {
+                if (k.key === key) {
+                    const values: winreg.IRegistryValue[] = [];
+                    for (const [name, value] of Object.entries(k.values)) {
+                        values.push({
+                            arch: arch ?? 'x64',
+                            hive: hive ?? winreg.HKLM,
+                            key: k.key,
+                            name,
+                            type: winreg.REG_SZ,
+                            value: value ?? '',
+                        });
+                    }
+                    return Promise.resolve(values);
+                }
+            }
+            return Promise.resolve([]);
+        }
+
+        function fakeRegistryKeys({ arch, hive, key }: winreg.Options): Promise<winreg.IRegistryKey[]> {
+            const regArch = arch === 'x86' ? registryData.x86 : registryData.x64;
+            const regHive = hive === winreg.HKCU ? regArch.HKCU : regArch.HKLM;
+            for (const k of regHive) {
+                if (k.key === key) {
+                    const keys = k.subKeys.map((s) => ({
+                        arch: arch ?? 'x64',
+                        hive: hive ?? winreg.HKLM,
+                        key: s,
+                    }));
+                    return Promise.resolve(keys);
+                }
+            }
+            return Promise.resolve([]);
+        }
+
+        setup(async () => {
+            sinon.stub(winreg, 'readRegistryValues').callsFake(fakeRegistryValues);
+            sinon.stub(winreg, 'readRegistryKeys').callsFake(fakeRegistryKeys);
+            sinon.stub(platformApis, 'getOSType').callsFake(() => platformApis.OSType.Windows);
+        });
+
+        teardown(() => {
+            sinon.restore();
+        });
+
+        test('If data provided by registry is more informative than kind resolvers, use it to update environment (64bit)', async () => {
+            const interpreterPath = path.join(regTestRoot, 'py39', 'python.exe');
+            const actual = await resolveBasicEnv({
+                executablePath: interpreterPath,
+                kind: PythonEnvKind.Unknown,
+                source: [PythonEnvSource.WindowsRegistry],
+            });
+            const expected = buildEnvInfo({
+                kind: PythonEnvKind.OtherGlobal, // Environment should be marked as "Global" instead of "Unknown".
+                executable: interpreterPath,
+                version: parseVersion('3.9.0rc2'), // Registry provides more complete version info.
+                arch: Architecture.x64,
+                org: 'PythonCore',
+                source: [PythonEnvSource.WindowsRegistry],
+            });
+            expected.distro.defaultDisplayName = 'Python 3.9 (64-bit)';
+            assertEnvEqual(actual, expected);
+        });
+
+        test('If data provided by registry is more informative than kind resolvers, use it to update environment (32bit)', async () => {
+            const interpreterPath = path.join(regTestRoot, 'python38', 'python.exe');
+            const actual = await resolveBasicEnv({
+                executablePath: interpreterPath,
+                kind: PythonEnvKind.Unknown,
+                source: [PythonEnvSource.WindowsRegistry, PythonEnvSource.PathEnvVar],
+            });
+            const expected = buildEnvInfo({
+                kind: PythonEnvKind.OtherGlobal, // Environment should be marked as "Global" instead of "Unknown".
+                executable: interpreterPath,
+                version: parseVersion('3.8.5'), // Registry provides more complete version info.
+                arch: Architecture.x86, // Provided by registry
+                org: 'PythonCodingPack', // Provided by registry
+                source: [PythonEnvSource.WindowsRegistry, PythonEnvSource.PathEnvVar],
+            });
+            expected.distro.defaultDisplayName = 'Python 3.8 (32-bit)';
+            assertEnvEqual(actual, expected);
+        });
+
+        test('If data provided by registry is less informative than kind resolvers, do not use it to update environment', async () => {
+            sinon.stub(externalDependencies, 'exec').callsFake(async (command: string) => {
+                throw new Error(`${command} is missing or is not executable`);
+            });
+            const interpreterPath = path.join(regTestRoot, 'conda3', 'python.exe');
+            const actual = await resolveBasicEnv({
+                executablePath: interpreterPath,
+                kind: PythonEnvKind.Conda,
+                source: [PythonEnvSource.WindowsRegistry],
+            });
+            const expected = buildEnvInfo({
+                location: path.join(regTestRoot, 'conda3'),
+                // Environment should already be marked as Conda. No need to update it to Global.
+                kind: PythonEnvKind.Conda,
+                executable: interpreterPath,
+                // Registry does not provide the minor version, so keep version provided by Conda resolver instead.
+                version: parseVersion('3.8.5'),
+                arch: Architecture.x64, // Provided by registry
+                org: 'ContinuumAnalytics', // Provided by registry
+                name: 'conda3',
+                source: [PythonEnvSource.WindowsRegistry],
+            });
+            expected.distro.defaultDisplayName = 'Anaconda py38_4.8.3';
             assertEnvEqual(actual, expected);
         });
     });

@@ -6,7 +6,6 @@ import { traceVerbose } from '../../common/logger';
 import { createDeferred } from '../../common/utils/async';
 import { getURIFilter } from '../../common/utils/misc';
 import { PythonEnvInfo } from './info';
-import { getMaxDerivedEnvInfo } from './info/env';
 import { IPythonEnvsIterator, PythonEnvUpdatedEvent, PythonLocatorQuery } from './locator';
 
 /**
@@ -74,14 +73,14 @@ function getSearchLocationFilters(query: PythonLocatorQuery): ((u: Uri) => boole
  *
  * This includes applying any received updates.
  */
-export async function getEnvs(iterator: IPythonEnvsIterator): Promise<PythonEnvInfo[]> {
-    const envs: (PythonEnvInfo | undefined)[] = [];
+export async function getEnvs<I = PythonEnvInfo>(iterator: IPythonEnvsIterator<I>): Promise<I[]> {
+    const envs: (I | undefined)[] = [];
 
     const updatesDone = createDeferred<void>();
     if (iterator.onUpdated === undefined) {
         updatesDone.resolve();
     } else {
-        const listener = iterator.onUpdated((event: PythonEnvUpdatedEvent | null) => {
+        const listener = iterator.onUpdated((event: PythonEnvUpdatedEvent<I> | null) => {
             if (event === null) {
                 updatesDone.resolve();
                 listener.dispose();
@@ -111,56 +110,4 @@ export async function getEnvs(iterator: IPythonEnvsIterator): Promise<PythonEnvI
 
     // Do not return invalid environments
     return envs.filter((e) => e !== undefined).map((e) => e!);
-}
-
-/**
- * For each env info in the iterator, yield it and emit an update.
- *
- * This is suitable for use in `Locator.iterEnvs()` implementations:
- *
- * ```
- *     const emitter = new EventEmitter<PythonEnvUpdatedEvent | null>;
- *     const iterator: PythonEnvsIterator = iterAndUpdateEnvs(envs, emitter.fire);
- *     iterator.onUpdated = emitter.event;
- *     return iterator;
- * ```
- *
- * @param notify - essentially `EventEmitter.fire()`
- * @param getUpdate - used to generate the updated env info
- */
-export async function* iterAndUpdateEnvs(
-    envs: PythonEnvInfo[] | AsyncIterableIterator<PythonEnvInfo>,
-    notify: (event: PythonEnvUpdatedEvent | null) => void,
-    getUpdate: (env: PythonEnvInfo) => Promise<PythonEnvInfo> = getMaxDerivedEnvInfo,
-): IPythonEnvsIterator {
-    let done = false;
-    let numRemaining = 0;
-
-    async function doUpdate(env: PythonEnvInfo, index: number): Promise<void> {
-        const update = await getUpdate(env);
-        if (update !== env) {
-            notify({ index, update, old: env });
-        }
-        numRemaining -= 1;
-        if (numRemaining === 0 && done) {
-            notify(null);
-        }
-    }
-
-    let numYielded = 0;
-    for await (const env of envs) {
-        const index = numYielded;
-        yield env;
-        numYielded += 1;
-
-        // Get the full info the in background and send updates.
-        numRemaining += 1;
-        doUpdate(env, index).ignoreErrors();
-    }
-    done = true;
-    if (numRemaining === 0) {
-        // There are no background updates left but `null` was not
-        // emitted yet (because `done` wasn't `true` yet).
-        notify(null);
-    }
 }

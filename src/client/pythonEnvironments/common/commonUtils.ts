@@ -9,8 +9,8 @@ import { logError } from '../../logging';
 import { PythonVersion, UNKNOWN_PYTHON_VERSION } from '../base/info';
 import { comparePythonVersionSpecificity } from '../base/info/env';
 import { parseVersion } from '../base/info/pythonVersion';
-import { getPythonVersionFromConda } from '../discovery/locators/services/conda';
-import { getPythonVersionFromPyvenvCfg } from '../discovery/locators/services/virtualEnvironmentIdentifier';
+import { getPythonVersionFromConda } from './environmentManagers/conda';
+import { getPythonVersionFromPyvenvCfg } from './environmentManagers/simplevirtualenvs';
 import * as posix from './posixUtils';
 import * as windows from './windowsUtils';
 
@@ -220,10 +220,7 @@ async function getPythonVersionFromNearByFiles(interpreterPath: string): Promise
  * @param interpreterPath Absolute path to the interpreter.
  * @param hint Any string that might contain version info.
  */
-export async function getPythonVersionFromPath(
-    interpreterPath: string | undefined,
-    hint?: string,
-): Promise<PythonVersion> {
+export async function getPythonVersionFromPath(interpreterPath: string, hint?: string): Promise<PythonVersion> {
     let versionA;
     try {
         versionA = hint ? parseVersion(hint) : UNKNOWN_PYTHON_VERSION;

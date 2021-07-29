@@ -3,6 +3,7 @@
 
 import { uniqBy } from 'lodash';
 import * as path from 'path';
+import { isTestExecution } from '../../common/constants';
 import { traceError, traceVerbose } from '../../common/logger';
 import {
     HKCU,
@@ -109,7 +110,27 @@ export async function getInterpreterDataFromRegistry(
     return (allData.filter((data) => data !== undefined) || []) as IRegistryInterpreterData[];
 }
 
+let registryInterpretersCache: IRegistryInterpreterData[] | undefined;
+
+/**
+ * Returns windows registry interpreters from memory, returns undefined if memory is empty.
+ * getRegistryInterpreters() must be called prior to this to populate memory.
+ */
+export function getRegistryInterpretersSync(): IRegistryInterpreterData[] | undefined {
+    return !isTestExecution() ? registryInterpretersCache : undefined;
+}
+
+let registryInterpretersPromise: Promise<IRegistryInterpreterData[]> | undefined;
+
 export async function getRegistryInterpreters(): Promise<IRegistryInterpreterData[]> {
+    if (!isTestExecution() && registryInterpretersPromise !== undefined) {
+        return registryInterpretersPromise;
+    }
+    registryInterpretersPromise = getRegistryInterpretersImpl();
+    return registryInterpretersPromise;
+}
+
+async function getRegistryInterpretersImpl(): Promise<IRegistryInterpreterData[]> {
     let registryData: IRegistryInterpreterData[] = [];
 
     for (const arch of ['x64', 'x86']) {
@@ -127,6 +148,6 @@ export async function getRegistryInterpreters(): Promise<IRegistryInterpreterDat
             }
         }
     }
-
-    return uniqBy(registryData, (r: IRegistryInterpreterData) => r.interpreterPath);
+    registryInterpretersCache = uniqBy(registryData, (r: IRegistryInterpreterData) => r.interpreterPath);
+    return registryInterpretersCache;
 }

@@ -28,6 +28,14 @@ export enum PythonEnvKind {
     OtherVirtual = 'virt-other',
 }
 
+export const virtualEnvKinds = [
+    PythonEnvKind.Poetry,
+    PythonEnvKind.Pipenv,
+    PythonEnvKind.Venv,
+    PythonEnvKind.VirtualEnvWrapper,
+    PythonEnvKind.Conda,
+    PythonEnvKind.VirtualEnv,
+];
 /**
  * Information about a file.
  */
@@ -57,21 +65,9 @@ export enum PythonEnvSource {
      */
     PathEnvVar = 'path env var',
     /**
-     * Environment was found via conda binary or conda environments file
-     */
-    Conda = 'conda',
-    /**
-     * Environment was found at pyenv default location
-     */
-    Pyenv = 'pyenv',
-    /**
      * Environment was found in windows registry
      */
     WindowsRegistry = 'windows registry',
-    /**
-     * Environment was found using other means
-     */
-    Other = 'other',
     // If source turns out to be useful we will expand this enum to contain more details sources.
 }
 
