@@ -55,3 +55,6 @@ jobs:
           node_version: ${{ env.NODE_VERSION }}
           vsix_name: ${{ needs.setup.outputs.vsix_name }}
           artifact_name: ${{ needs.setup.outputs.vsix_artifact_name }}
+
+      - name: Show files
+        run: ls *
