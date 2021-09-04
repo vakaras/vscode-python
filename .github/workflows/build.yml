@@ -22,7 +22,6 @@ env:
 jobs:
   setup:
     name: Set up
-    if: github.repository == 'microsoft/vscode-python'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -44,7 +43,6 @@ jobs:
 
   build-vsix:
     name: Create VSIX
-    if: github.repository == 'microsoft/vscode-python'
     needs: setup
     runs-on: ubuntu-latest
     steps:
