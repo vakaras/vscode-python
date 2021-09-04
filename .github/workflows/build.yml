@@ -84,5 +84,5 @@ jobs:
         with:
           upload_url: ${{ env.UPLOAD_URL }}
           asset_path: ms-python-insiders.vsix
-          asset_name: ms-python-${{ env.TAG_NAME }}.exe
+          asset_name: ms-python-${{ env.TAG_NAME }}.vsix
           asset_content_type: application/octet-stream
