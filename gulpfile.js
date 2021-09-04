@@ -72,7 +72,7 @@ gulp.task('webpack', async () => {
 
 gulp.task('addExtensionPackDependencies', async () => {
     await buildLicense();
-    await addExtensionPackDependencies();
+    //await addExtensionPackDependencies();
 });
 
 async function addExtensionPackDependencies() {
